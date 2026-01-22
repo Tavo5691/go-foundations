@@ -1,9 +1,28 @@
 # go-foundations
 
-Already did the Tour of Go, learned basic usage of slices, maps, structs, interfaces, methods.
+Go HTTP Server repo. 
 
-Created basic tests and ran them with "go test", created modules and ran the main function with "go build" and executing the binary (Im using the Terminal and Ubuntu on Windows)
+Incremental learning using Claude Code in the terminal as a Guide, all code is researched and written by hand to ensure maximum practice, then the agent gives corrections and next steps. 
 
-Still need to practice concurrency, but will move past the Tour of Go to learn with hands-on projects.
-
-Will create the small programs next in this same repo.
+Project Overview
+┌───────┬───────────────────────┬───────────────────────────────┐
+│ Phase │         Focus         │           Concepts            │
+├───────┼───────────────────────┼───────────────────────────────┤
+│ 1     │ Project Setup         │ Go modules, project structure │
+├───────┼───────────────────────┼───────────────────────────────┤
+│ 2     │ Basic HTTP Server     │ net/http, then Gin            │
+├───────┼───────────────────────┼───────────────────────────────┤
+│ 3     │ Task CRUD (in-memory) │ Structs, slices, handlers     │
+├───────┼───────────────────────┼───────────────────────────────┤
+│ 4     │ Database Integration  │ GORM or database/sql          │
+├───────┼───────────────────────┼───────────────────────────────┤
+│ 5     │ User Auth             │ JWT, password hashing         │
+├───────┼───────────────────────┼───────────────────────────────┤
+│ 6     │ Middleware            │ Logging, CORS, auth guards    │
+├───────┼───────────────────────┼───────────────────────────────┤
+│ 7     │ Validation & Errors   │ Structured responses          │
+├───────┼───────────────────────┼───────────────────────────────┤
+│ 8     │ Config Management     │ Environment variables         │
+├───────┼───────────────────────┼───────────────────────────────┤
+│ 9     │ Docker                │ Containerization              │
+└───────┴───────────────────────┴───────────────────────────────┘
