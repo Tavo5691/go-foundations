@@ -2,15 +2,18 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"go-foundations/internal/models"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 type HealthResponse struct {
@@ -19,6 +22,35 @@ type HealthResponse struct {
 
 func parseId(id string) (uuid.UUID, error) {
 	return uuid.Parse(id)
+}
+
+func authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		tokenString := authHeader[7:]
+
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method")
+			}
+			return []byte("key"), nil
+		})
+		if err != nil {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+
+		if !token.Valid {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func main() {
@@ -36,6 +68,86 @@ func main() {
 
 	healthHandler := func(c *gin.Context) {
 		c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
+	}
+
+	registerHandler := func(c *gin.Context) {
+		request := &models.User{}
+		err := c.ShouldBindBodyWithJSON(request)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+		hashed, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+
+		row := db.QueryRow(`INSERT INTO
+			users(id, email, password, created_at)
+			VALUES($1, $2, $3, $4)
+			RETURNING id, email, created_at`,
+			uuid.New(), request.Email, string(hashed), time.Now())
+
+		user := models.User{}
+		err = row.Scan(&user.ID, &user.Email, &user.CreatedAt)
+		if err != nil {
+			if err, ok := err.(*pq.Error); ok && err.Code.Name() == "unique_violation" {
+				c.Status(http.StatusConflict)
+				return
+			}
+
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+
+		c.JSON(http.StatusCreated, user)
+	}
+
+	loginHandler := func(c *gin.Context) {
+		request := &models.User{}
+		err := c.ShouldBindBodyWithJSON(request)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+		row := db.QueryRow(`
+		SELECT id, email, password, created_at
+		FROM users
+		WHERE email = $1`, request.Email)
+
+		user := models.User{}
+		err = row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt)
+		if err == sql.ErrNoRows {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+
+		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(request.Password))
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+
+		token := jwt.NewWithClaims(
+			jwt.SigningMethodHS256,
+			jwt.MapClaims{
+				"sub": user.ID.String(),
+				"exp": time.Now().Add(24 * time.Hour).Unix()})
+
+		tokenString, err := token.SignedString([]byte("key"))
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+
+		c.JSON(http.StatusOK, models.Token{Token: tokenString})
 	}
 
 	getTasksHandler := func(c *gin.Context) {
@@ -183,13 +295,19 @@ func main() {
 	}
 
 	router := gin.Default()
+	protected := router.Group("/")
+	protected.Use(authMiddleware())
 
 	router.GET("/health", healthHandler)
-	router.GET("/tasks", getTasksHandler)
-	router.POST("/tasks", postTaskHandler)
-	router.GET("/tasks/:id", getTaskByIdHandler)
-	router.PUT("/tasks/:id", putTaskByIdHandler)
-	router.DELETE("/tasks/:id", deleteTaskByIdHandler)
+
+	router.POST("/register", registerHandler)
+	router.POST("/login", loginHandler)
+
+	protected.GET("/tasks", getTasksHandler)
+	protected.POST("/tasks", postTaskHandler)
+	protected.GET("/tasks/:id", getTaskByIdHandler)
+	protected.PUT("/tasks/:id", putTaskByIdHandler)
+	protected.DELETE("/tasks/:id", deleteTaskByIdHandler)
 
 	log.Fatal(router.Run())
 }
