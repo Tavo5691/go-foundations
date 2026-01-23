@@ -15,7 +15,7 @@ services:
       ports:
         - "8080:8080"
       environment:
-        DB_CONNECTION_STRING: postgres://user:pass@db:5432/taskdb?sslmode=disable
+        DATABASE_URL: postgres://user:pass@db:5432/taskdb?sslmode=disable
         JWT_KEY: your-secret-key-here
         PORT: "8080"
       depends_on:
