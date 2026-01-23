@@ -30,7 +30,7 @@ func authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-			c.AbortWithStatus(http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "unauthorized"})
 			return
 		}
 		tokenString := authHeader[7:]
@@ -42,12 +42,12 @@ func authMiddleware() gin.HandlerFunc {
 			return []byte(os.Getenv("JWT_KEY")), nil
 		})
 		if err != nil {
-			c.AbortWithStatus(http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "unauthorized"})
 			return
 		}
 
 		if !token.Valid {
-			c.AbortWithStatus(http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "unauthorized"})
 			return
 		}
 
@@ -87,13 +87,13 @@ func main() {
 		request := &models.User{}
 		err := c.ShouldBindBodyWithJSON(request)
 		if err != nil {
-			c.Status(http.StatusBadRequest)
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 			return
 		}
 
 		hashed, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 
@@ -107,11 +107,11 @@ func main() {
 		err = row.Scan(&user.ID, &user.Email, &user.CreatedAt)
 		if err != nil {
 			if err, ok := err.(*pq.Error); ok && err.Code.Name() == "unique_violation" {
-				c.Status(http.StatusConflict)
+				c.JSON(http.StatusConflict, models.ErrorResponse{Error: "email already registered"})
 				return
 			}
 
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "database error"})
 			return
 		}
 
@@ -122,7 +122,7 @@ func main() {
 		request := &models.User{}
 		err := c.ShouldBindBodyWithJSON(request)
 		if err != nil {
-			c.Status(http.StatusBadRequest)
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 			return
 		}
 
@@ -134,17 +134,17 @@ func main() {
 		user := models.User{}
 		err = row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt)
 		if err == sql.ErrNoRows {
-			c.Status(http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "unauthorized"})
 			return
 		}
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 
 		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(request.Password))
 		if err != nil {
-			c.Status(http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "unauthorized"})
 			return
 		}
 
@@ -156,7 +156,7 @@ func main() {
 
 		tokenString, err := token.SignedString([]byte(jwtKey))
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 
@@ -169,7 +169,7 @@ func main() {
 
 		rows, err := db.Query("SELECT id, title, description, completed, created_at FROM tasks")
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 		defer rows.Close()
@@ -178,7 +178,7 @@ func main() {
 			task := models.Task{}
 			err = rows.Scan(&task.ID, &task.Title, &task.Description, &task.Completed, &task.CreatedAt)
 			if err != nil {
-				c.Status(http.StatusInternalServerError)
+				c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 				return
 			}
 
@@ -187,7 +187,7 @@ func main() {
 
 		err = rows.Err()
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 
@@ -198,7 +198,7 @@ func main() {
 		request := &models.Task{}
 		err := c.ShouldBindBodyWithJSON(request)
 		if err != nil {
-			c.Status(http.StatusBadRequest)
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 			return
 		}
 
@@ -211,11 +211,11 @@ func main() {
 		task := models.Task{}
 		err = row.Scan(&task.ID, &task.Title, &task.Description, &task.Completed, &task.CreatedAt)
 		if err == sql.ErrNoRows {
-			c.Status(http.StatusNotFound)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "database error"})
 			return
 		}
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 
@@ -225,7 +225,7 @@ func main() {
 	getTaskByIdHandler := func(c *gin.Context) {
 		taskId, err := parseId(c.Param("id"))
 		if err != nil {
-			c.Status(http.StatusBadRequest)
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid id"})
 			return
 		}
 
@@ -234,11 +234,11 @@ func main() {
 		task := models.Task{}
 		err = row.Scan(&task.ID, &task.Title, &task.Description, &task.Completed, &task.CreatedAt)
 		if err == sql.ErrNoRows {
-			c.Status(http.StatusNotFound)
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "not found"})
 			return
 		}
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 
@@ -248,14 +248,14 @@ func main() {
 	putTaskByIdHandler := func(c *gin.Context) {
 		taskId, err := parseId(c.Param("id"))
 		if err != nil {
-			c.Status(http.StatusBadRequest)
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid id"})
 			return
 		}
 
 		request := &models.Task{}
 		err = c.ShouldBindBodyWithJSON(request)
 		if err != nil {
-			c.Status(http.StatusBadRequest)
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 			return
 		}
 
@@ -265,17 +265,17 @@ func main() {
 			WHERE id = $4`,
 			request.Title, request.Description, request.Completed, taskId)
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 		if rowsAffected == 0 {
-			c.Status(http.StatusNotFound)
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "not found"})
 			return
 		}
 
@@ -285,23 +285,23 @@ func main() {
 	deleteTaskByIdHandler := func(c *gin.Context) {
 		taskId, err := parseId(c.Param("id"))
 		if err != nil {
-			c.Status(http.StatusBadRequest)
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid id"})
 			return
 		}
 
 		result, err := db.Exec("DELETE FROM tasks WHERE id = $1", taskId)
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
 			return
 		}
 		if rowsAffected == 0 {
-			c.Status(http.StatusNotFound)
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "not found"})
 			return
 		}
 
