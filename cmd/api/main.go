@@ -6,11 +6,13 @@ import (
 	"go-foundations/internal/models"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/lib/pq"
@@ -37,7 +39,7 @@ func authMiddleware() gin.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method")
 			}
-			return []byte("key"), nil
+			return []byte(os.Getenv("JWT_KEY")), nil
 		})
 		if err != nil {
 			c.AbortWithStatus(http.StatusUnauthorized)
@@ -54,7 +56,19 @@ func authMiddleware() gin.HandlerFunc {
 }
 
 func main() {
-	db, err := sql.Open("postgres", "postgres://user:pass@localhost:5432/taskdb?sslmode=disable")
+	// load env variables
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	jwtKey := os.Getenv("JWT_KEY")
+	if jwtKey == "" {
+		log.Fatal("JWT_KEY environment variable is required")
+	}
+
+	// open DB connection
+	db, err := sql.Open("postgres", os.Getenv("DB_CONNECTION_STRING"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -66,10 +80,12 @@ func main() {
 	log.Println("Connected to DB")
 	defer db.Close()
 
+	//health
 	healthHandler := func(c *gin.Context) {
 		c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
 	}
 
+	// users
 	registerHandler := func(c *gin.Context) {
 		request := &models.User{}
 		err := c.ShouldBindBodyWithJSON(request)
@@ -141,7 +157,7 @@ func main() {
 				"sub": user.ID.String(),
 				"exp": time.Now().Add(24 * time.Hour).Unix()})
 
-		tokenString, err := token.SignedString([]byte("key"))
+		tokenString, err := token.SignedString([]byte(jwtKey))
 		if err != nil {
 			c.Status(http.StatusInternalServerError)
 			return
@@ -150,6 +166,7 @@ func main() {
 		c.JSON(http.StatusOK, models.Token{Token: tokenString})
 	}
 
+	// tasks
 	getTasksHandler := func(c *gin.Context) {
 		results := make([]models.Task, 0)
 
@@ -294,6 +311,7 @@ func main() {
 		c.Status(http.StatusNoContent)
 	}
 
+	// routes
 	router := gin.Default()
 	protected := router.Group("/")
 	protected.Use(authMiddleware())
